@@ -1,6 +1,16 @@
 #import "Basic";
 #import "Windows";
 #import "Windows_Utf8";
+#import "Gamepad";
+#import "Input";
+#import "GL" (ENABLE_ALL_EXTENSIONS = true);
+
+#load "game.jai";
+
+#if OS == .WINDOWS {
+    WR :: #import "Windows_Resources";
+    #run WR.disable_runtime_console();
+}
 
 win32_get_window_dimension :: (window: HWND) -> width: s32, height: s32 {
     client_rect: RECT;
@@ -156,38 +166,107 @@ win32_process_pending_messages :: () {
     }
 }
 
+win32_init_opengl :: (window: HWND) {
+    dc := GetDC(window);
+
+    format: PIXELFORMATDESCRIPTOR;
+    format.nSize = size_of(type_of(format));
+    format.nVersion = 1;
+    format.iPixelType = PFD_TYPE_RGBA;
+    format.dwFlags = PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER;
+    format.cColorBits = 32;
+    format.cAlphaBits = 8;
+    format.iLayerType = PFD_MAIN_PLANE;
+
+    suggested_format_index := ChoosePixelFormat(dc, *format);
+    suggested_format: PIXELFORMATDESCRIPTOR;
+    DescribePixelFormat(dc, suggested_format_index, size_of(type_of(suggested_format)), *suggested_format);
+    SetPixelFormat(dc, suggested_format_index, *suggested_format);
+
+    rc := wglCreateContext(dc);
+    if wglMakeCurrent(dc, rc) {
+        gl_load(*gl, wglGetProcAddress);
+
+        // This is where we are currently putting OpenGL init stuff
+        glGenTextures(1, *blit_texture_handle);
+
+        if wglSwapIntervalEXT {
+            wglSwapIntervalEXT(1);
+        }
+    }
+
+    ReleaseDC(window, dc);
+}
+
 win32_display_buffer_in_window :: (buffer: *Win32_Offscreen_Buffer, dc: HDC, window_width: s32, window_height: s32) {
     // TODO: Aspect ratio correction
     // TODO: Play with stretch modes
 
-    StretchDIBits(dc, 0, 0, window_width, window_height, 0, 0, buffer.width, buffer.height, buffer.memory, *buffer.info, DIB_RGB_COLORS, .SRCCOPY);
-}
+    // StretchDIBits(dc, 0, 0, window_width, window_height, 0, 0, buffer.width, buffer.height, buffer.memory, *buffer.info, DIB_RGB_COLORS, .SRCCOPY);
 
-win32_init_direct_sound :: () {
-    // dsound := LoadLibraryW(utf8_to_wide("dsound.dll",, temp));
-    // if dsound {
-    //     PROC_DirectSoundCreate :: #type () -> ;
-    //     DirectSoundCreate :=
-    // }
-}
+    glViewport(0, 0, xx window_width, xx window_height);
 
-render_weird_gradient :: (buffer: *Win32_Offscreen_Buffer, blue_offset: s32, green_offset: s32) {
-    row := cast(*u8) buffer.memory;
-    for y: 0..buffer.height-1 {
-        pixel := cast(*u32) row;
-        for x: 0..buffer.width-1 {
-            blue := cast,trunc(u8) (x + blue_offset);
-            green := cast,trunc(u8) (y + green_offset);
-            pixel.* = (cast(u32, green) << 8) | blue;
-            pixel += 1;
-        }
-        row += buffer.pitch;
-    }
+    // glClearColor(.2, .3, .3, 1);
+    // glClear(GL_COLOR_BUFFER_BIT);
+
+    glBindTexture(GL_TEXTURE_2D, blit_texture_handle);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, xx buffer.width, xx buffer.height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, buffer.memory);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+    glEnable(GL_TEXTURE_2D);
+
+    glMatrixMode(GL_TEXTURE);
+    glLoadIdentity();
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+
+    glBegin(GL_TRIANGLES);
+
+    p : float = 1.0;
+
+    // Lower triangle
+    glTexCoord2f(0, 0);
+    glVertex2f(-p, -p);
+
+    glTexCoord2f(1, 0);
+    glVertex2f(p, -p);
+
+    glTexCoord2f(1, 1);
+    glVertex2f(p, p);
+
+    // Upper triangle
+    glTexCoord2f(0, 0);
+    glVertex2f(-p, -p);
+
+    glTexCoord2f(1, 1);
+    glVertex2f(p, p);
+
+    glTexCoord2f(0, 1);
+    glVertex2f(-p, p);
+
+    glEnd();
+
+    SwapBuffers(dc);
 }
 
 main :: () {
     SetProcessDPIAware();
     timeBeginPeriod(1);
+
+    init_gamepad();
+
+    // initted := init_xinput();
+    // assert(initted);
 
     hInstance := GetModuleHandleW(null);
 
@@ -202,34 +281,60 @@ main :: () {
     wc.lpszClassName = utf8_to_wide("HandmadeHeroWindowClass",, temp);
 
     if RegisterClassExW(*wc) == 0 {
-        log_error("RegisterClassExW returned 0.\n");
+        log_error("Failed to register the window class.\n");
         return;
     }
 
     window := CreateWindowExW(WS_EX_APPWINDOW, wc.lpszClassName, utf8_to_wide("Handmade Hero",, temp), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, null, null, hInstance, null);
     if !window {
-        log_error("CreateWindowExW failed!\n");
+        log_error("Failed to create the window.\n");
         return;
     }
 
-    win32_init_direct_sound();
+    win32_init_opengl(window);
 
-    dc := GetDC(window);
-    win32_resize_dib_section(*backbuffer, 1280, 720);
+    print("%\n", to_string(glGetString(GL_VENDOR)));
+    print("%\n", to_string(glGetString(GL_RENDERER)));
+    print("%\n", to_string(glGetString(GL_VERSION)));
+
+    win32_resize_dib_section(*backbuffer, 1920, 1080);
 
     ShowWindow(window, SW_SHOWDEFAULT);
 
-    blue_offset: s32;
-    green_offset: s32;
+    performance_frequency: s64;
+    QueryPerformanceFrequency(*performance_frequency);
+
+    last_counter: s64;
+    QueryPerformanceCounter(*last_counter);
+
     while !should_quit_game {
         win32_process_pending_messages();
 
-        render_weird_gradient(*backbuffer, blue_offset, green_offset);
+        // @Hack: This is needed because we are not using the Input module!
+        memset(*input_button_states, 0, size_of(type_of(input_button_states)));
+        update_gamepad();
+
+        buffer: Offscreen_Buffer = ---;
+        buffer.memory = backbuffer.memory;
+        buffer.width = backbuffer.width;
+        buffer.height = backbuffer.height;
+        buffer.pitch = backbuffer.pitch;
+        buffer.bytes_per_pixel = backbuffer.bytes_per_pixel;
+
+        draw_one_frame(*buffer);
 
         window_width, window_height := win32_get_window_dimension(window);
+        dc := GetDC(window);
         win32_display_buffer_in_window(*backbuffer, dc, window_width, window_height);
+        ReleaseDC(window, dc);
 
-        blue_offset += 1;
+        end_counter: s64;
+        QueryPerformanceCounter(*end_counter);
+
+        counter_elapsed := end_counter - last_counter;
+        // print("ms = %\n", (1000*counter_elapsed) / performance_frequency);
+
+        last_counter = end_counter;
     }
 }
 
@@ -238,10 +343,7 @@ main :: () {
 should_quit_game := false;
 backbuffer: Win32_Offscreen_Buffer;
 
-#run {
-    WR :: #import "Windows_Resources";
-    WR.disable_runtime_console();
-}
+blit_texture_handle: u32;
 
 // @@: This came from the fact that StretchDIBits wasn't in Windows.jai...
 user :: #system_library "User32";
