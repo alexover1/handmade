@@ -112,6 +112,16 @@ SIZE :: struct {
     cy: s32;
 }
 
+WINDOWPLACEMENT :: struct {
+    length: u32;
+    flags: u32;
+    showCmd: u32;
+    ptMinPosition: POINT;
+    ptMaxPosition: POINT;
+    rcNormalPosition: RECT;
+    rcDevice: RECT;
+}
+
 MEMORY_BASIC_INFORMATION :: struct {
     BaseAddress:       *void;
     AllocationBase:    *void;
@@ -617,7 +627,7 @@ GetForegroundWindow :: () -> HWND #foreign user32;
 //GetWindowDisplayAffinity
 //GetWindowInfo
 //GetWindowModuleFileName
-//GetWindowPlacement
+GetWindowPlacement :: (hwnd: HWND, lpwndpl: *WINDOWPLACEMENT) -> BOOL #foreign user32;
 GetWindowRect       :: (hwnd: HWND, rect: *RECT) -> s32 #foreign user32;
 //GetWindowText
 //GetWindowTextLength
@@ -648,7 +658,7 @@ SetProcessDPIAware :: () -> s32 #foreign user32;
 //SetSysColors
 //SetWindowDisplayAffinity
 //SetWindowFeedbackSettings
-//SetWindowPlacement
+SetWindowPlacement :: (hwnd: HWND, lpwndpl: *WINDOWPLACEMENT) -> BOOL #foreign user32;
 SetWindowPos :: (hwnd: HWND, hWndInsertAfter: HWND, X: s32, Y: s32, cx: s32, cy: s32, uFlags: u32) -> BOOL #foreign user32;
 SetWindowTextA :: (hWnd: HWND, lpString :*u8)  -> BOOL #foreign user32;
 SetWindowTextW :: (hWnd: HWND, lpString :*u16) -> BOOL #foreign user32;

@@ -1,3 +1,15 @@
+Game_Memory :: struct {
+    base_size: u32;
+    base_pointer: *void;
+    temporary_size: u32;
+    temporary_pointer: *void;
+}
+
+Game_State :: struct {
+    blue_offset: s32;
+    green_offset: s32;
+}
+
 Offscreen_Buffer :: struct {
     // Pixels are always 32-bits wide, ordered in memory BB GG RR XX
     memory: *void;
@@ -21,7 +33,9 @@ render_weird_gradient :: (buffer: *Offscreen_Buffer, blue_offset: s32, green_off
     }
 }
 
-draw_one_frame :: (buffer: *Offscreen_Buffer) {
+draw_one_frame :: (memory: *Game_Memory, buffer: *Offscreen_Buffer) {
+    using game_state := cast(*Game_State) memory.base_pointer;
+
     render_weird_gradient(buffer, blue_offset, green_offset);
 
     if gamepad.connected {
@@ -32,10 +46,4 @@ draw_one_frame :: (buffer: *Offscreen_Buffer) {
 
     blue_offset += 1;
 }
-
-
-#scope_file
-
-blue_offset: s32;
-green_offset: s32;
 

@@ -1,9 +1,11 @@
 #import "Basic";
+#import "Input";
+#import "Gamepad";
 #import "Windows";
 #import "Windows_Utf8";
-#import "Gamepad";
-#import "Input";
 #import "GL" (ENABLE_ALL_EXTENSIONS = true);
+
+RELEASE :: false;
 
 #load "game.jai";
 
@@ -20,6 +22,29 @@ win32_get_window_dimension :: (window: HWND) -> width: s32, height: s32 {
     height := client_rect.bottom - client_rect.top;
 
     return width, height;
+}
+
+win32_toggle_fullscreen :: (window: HWND) {
+    style := GetWindowLongW(window, GWL_STYLE);
+
+    if style & WS_OVERLAPPEDWINDOW {
+        monitor_info: MONITORINFO;
+        monitor_info.cbSize = size_of(type_of(monitor_info));
+        if GetWindowPlacement(window, *saved_window_position) {
+            if GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), *monitor_info) {
+                SetWindowPos(window, HWND_TOP, 
+                             monitor_info.rcMonitor.left, monitor_info.rcMonitor.top,
+                             monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
+                             monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
+                             SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+            }
+        }
+    } else {
+        SetWindowPlacement(window, *saved_window_position);
+        SetWindowPos(window, null, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                     SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
 }
 
 Win32_Offscreen_Buffer :: struct {
@@ -84,7 +109,7 @@ win32_main_window_callback :: (window: HWND, message: u32, wparam: WPARAM, lpara
             dc := BeginPaint(window, *paint);
 
             window_width, window_height := win32_get_window_dimension(window);
-            win32_display_buffer_in_window(*backbuffer, dc, window_width, window_height);
+            win32_display_buffer_in_window(*global_backbuffer, dc, window_width, window_height);
 
             EndPaint(window, *paint);
         case;
@@ -154,7 +179,7 @@ win32_process_pending_messages :: () {
                     should_quit_game = true;
                 } else if vk_code == VK_RETURN && alt_key_was_down {
                     if message.hwnd {
-                        // ToggleFullscreen(message.hwnd);
+                        win32_toggle_fullscreen(message.hwnd);
                     }
                 }
             }
@@ -285,7 +310,7 @@ main :: () {
         return;
     }
 
-    window := CreateWindowExW(WS_EX_APPWINDOW, wc.lpszClassName, utf8_to_wide("Handmade Hero",, temp), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, null, null, hInstance, null);
+    window := CreateWindowExW(0, wc.lpszClassName, utf8_to_wide("Handmade Hero",, temp), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, null, null, hInstance, null);
     if !window {
         log_error("Failed to create the window.\n");
         return;
@@ -297,7 +322,14 @@ main :: () {
     print("%\n", to_string(glGetString(GL_RENDERER)));
     print("%\n", to_string(glGetString(GL_VERSION)));
 
-    win32_resize_dib_section(*backbuffer, 1920, 1080);
+    win32_resize_dib_section(*global_backbuffer, 1920, 1080);
+
+    base_address := ifx !RELEASE then 2*1024*1024*1024;
+
+    game_memory: Game_Memory;
+    game_memory.base_size = 256*1024*1024;
+    game_memory.base_pointer = VirtualAlloc(xx base_address, game_memory.base_size,
+                                            MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
     ShowWindow(window, SW_SHOWDEFAULT);
 
@@ -315,17 +347,17 @@ main :: () {
         update_gamepad();
 
         buffer: Offscreen_Buffer = ---;
-        buffer.memory = backbuffer.memory;
-        buffer.width = backbuffer.width;
-        buffer.height = backbuffer.height;
-        buffer.pitch = backbuffer.pitch;
-        buffer.bytes_per_pixel = backbuffer.bytes_per_pixel;
+        buffer.memory = global_backbuffer.memory;
+        buffer.width = global_backbuffer.width;
+        buffer.height = global_backbuffer.height;
+        buffer.pitch = global_backbuffer.pitch;
+        buffer.bytes_per_pixel = global_backbuffer.bytes_per_pixel;
 
-        draw_one_frame(*buffer);
+        draw_one_frame(*game_memory, *buffer);
 
         window_width, window_height := win32_get_window_dimension(window);
         dc := GetDC(window);
-        win32_display_buffer_in_window(*backbuffer, dc, window_width, window_height);
+        win32_display_buffer_in_window(*global_backbuffer, dc, window_width, window_height);
         ReleaseDC(window, dc);
 
         end_counter: s64;
@@ -341,6 +373,8 @@ main :: () {
 #scope_file
 
 should_quit_game := false;
-backbuffer: Win32_Offscreen_Buffer;
+global_backbuffer: Win32_Offscreen_Buffer;
+saved_window_position: WINDOWPLACEMENT = .{ length = size_of(WINDOWPLACEMENT) };
 
 blit_texture_handle: u32;
+
