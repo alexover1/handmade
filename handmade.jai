@@ -344,24 +344,3 @@ should_quit_game := false;
 backbuffer: Win32_Offscreen_Buffer;
 
 blit_texture_handle: u32;
-
-// @@: This came from the fact that StretchDIBits wasn't in Windows.jai...
-user :: #system_library "User32";
-gdi :: #system_library "Gdi32";
-
-SendMessageW :: (window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> s64 #foreign user;
-
-PAINTSTRUCT :: struct {
-    hdc: HDC;
-    fErase: BOOL;
-    rcPaint: RECT;
-    fRestore: BOOL;
-    fIncUpdate: BOOL;
-    rgbReserved: [32]u8;
-}
-
-BeginPaint :: (hWnd: HWND, lpPaint: *PAINTSTRUCT) -> HDC #foreign user;
-EndPaint :: (hWnd: HWND, lpPaint: *PAINTSTRUCT) #foreign user;
-
-// @@: This should be in Windows.jai!
-StretchDIBits :: (hdc: HDC, xDest: s32, yDest: s32, DestWidth: s32, DestHeight: s32, xSrc: s32, ySrc: s32, SrcWidth: s32, SrcHeight: s32, lpBits: *void, lpBmi: *BITMAPINFO, iUsage: u32, rop: ROP) #foreign gdi;
