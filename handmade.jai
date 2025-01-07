@@ -232,7 +232,7 @@ win32_display_buffer_in_window :: (buffer: *Win32_Offscreen_Buffer, dc: HDC, win
 
     glBegin(GL_TRIANGLES);
 
-    p : float = 1.0;
+    p : float : 1.0;
 
     // Lower triangle
     glTexCoord2f(0, 0);
@@ -332,9 +332,9 @@ main :: () {
         QueryPerformanceCounter(*end_counter);
 
         counter_elapsed := end_counter - last_counter;
-        // print("ms = %\n", (1000*counter_elapsed) / performance_frequency);
-
         last_counter = end_counter;
+
+        // print("ms = %\n", (1000*counter_elapsed) / cast(float) performance_frequency);
     }
 }
 
