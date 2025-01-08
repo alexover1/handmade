@@ -496,10 +496,10 @@ main :: () {
                 }
 
                 threshold : float : 0.5;
-                win32_process_xinput_digital_button(xx ifx controller.left_stick.x < -threshold then 1, 1, *controller.move_left);
-                win32_process_xinput_digital_button(xx ifx controller.left_stick.x > threshold then 1, 1, *controller.move_right);
-                win32_process_xinput_digital_button(xx ifx controller.left_stick.y < -threshold then 1, 1, *controller.move_down);
-                win32_process_xinput_digital_button(xx ifx controller.left_stick.y > threshold then 1, 1, *controller.move_up);
+                win32_process_xinput_digital_button(ifx controller.left_stick.x < -threshold then cast(u32)1, 1, *controller.move_left);
+                win32_process_xinput_digital_button(ifx controller.left_stick.x > threshold then cast(u32)1, 1, *controller.move_right);
+                win32_process_xinput_digital_button(ifx controller.left_stick.y < -threshold then cast(u32)1, 1, *controller.move_down);
+                win32_process_xinput_digital_button(ifx controller.left_stick.y > threshold then cast(u32)1, 1, *controller.move_up);
 
                 win32_process_xinput_digital_button(pad.wButtons, XINPUT_GAMEPAD_A, *controller.action_down);
                 win32_process_xinput_digital_button(pad.wButtons, XINPUT_GAMEPAD_B, *controller.action_right);
