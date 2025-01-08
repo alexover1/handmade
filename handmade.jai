@@ -10,7 +10,7 @@ RELEASE :: false;
 
 #if OS == .WINDOWS {
     WR :: #import "Windows_Resources";
-    // #run WR.disable_runtime_console();
+    #run WR.disable_runtime_console();
 }
 
 win32_get_window_dimension :: (window: HWND) -> width: s32, height: s32 {
