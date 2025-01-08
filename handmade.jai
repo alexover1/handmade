@@ -1,6 +1,5 @@
+#import "Math";
 #import "Basic";
-#import "Input";
-#import "Gamepad";
 #import "Windows";
 #import "Windows_Utf8";
 #import "GL" (ENABLE_ALL_EXTENSIONS = true);
@@ -11,7 +10,7 @@ RELEASE :: false;
 
 #if OS == .WINDOWS {
     WR :: #import "Windows_Resources";
-    #run WR.disable_runtime_console();
+    // #run WR.disable_runtime_console();
 }
 
 win32_get_window_dimension :: (window: HWND) -> width: s32, height: s32 {
@@ -32,7 +31,7 @@ win32_toggle_fullscreen :: (window: HWND) {
         monitor_info.cbSize = size_of(type_of(monitor_info));
         if GetWindowPlacement(window, *saved_window_position) {
             if GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), *monitor_info) {
-                SetWindowPos(window, HWND_TOP, 
+                SetWindowPos(window, HWND_TOP,
                              monitor_info.rcMonitor.left, monitor_info.rcMonitor.top,
                              monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
                              monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
@@ -119,6 +118,110 @@ win32_main_window_callback :: (window: HWND, message: u32, wparam: WPARAM, lpara
 
         return 0;
     }
+}
+
+win32_init_xinput :: () -> bool {
+    xinput_library := LoadLibraryW(utf8_to_wide("xinput1_4.dll",, temp));
+    if !xinput_library {
+        xinput_library = LoadLibraryW(utf8_to_wide("xinput1_3.dll",, temp));
+    }
+
+    if !xinput_library return false;
+
+    xinput_get_state := GetProcAddress(xinput_library, "XInputGetState");
+    if xinput_get_state  XInputGetState = xinput_get_state;
+
+    xinput_set_state := GetProcAddress(xinput_library, "XInputSetState");
+    if xinput_set_state  XInputSetState = xinput_set_state;
+
+    return true;
+}
+
+XINPUT_GAMEPAD :: struct {
+    wButtons: u16;
+    bLeftTrigger: u8;
+    bRightTrigger: u8;
+    sThumbLX: s16;
+    sThumbLY: s16;
+    sThumbRX: s16;
+    sThumbRY: s16;
+}
+
+XINPUT_STATE :: struct {
+    dwPacketNumber: u32;
+    Gamepad: XINPUT_GAMEPAD;
+}
+
+XINPUT_VIBRATION :: struct {
+    wLeftMotorSpeed: u16;
+    wRightMotorSpeed: u16;
+}
+
+//
+// Constants for gamepad buttons
+//
+XINPUT_GAMEPAD_DPAD_UP ::          0x0001;
+XINPUT_GAMEPAD_DPAD_DOWN ::        0x0002;
+XINPUT_GAMEPAD_DPAD_LEFT ::        0x0004;
+XINPUT_GAMEPAD_DPAD_RIGHT ::       0x0008;
+XINPUT_GAMEPAD_START ::            0x0010;
+XINPUT_GAMEPAD_BACK ::             0x0020;
+XINPUT_GAMEPAD_LEFT_THUMB ::       0x0040;
+XINPUT_GAMEPAD_RIGHT_THUMB ::      0x0080;
+XINPUT_GAMEPAD_LEFT_SHOULDER ::    0x0100;
+XINPUT_GAMEPAD_RIGHT_SHOULDER ::   0x0200;
+XINPUT_GAMEPAD_A ::                0x1000;
+XINPUT_GAMEPAD_B ::                0x2000;
+XINPUT_GAMEPAD_X ::                0x4000;
+XINPUT_GAMEPAD_Y ::                0x8000;
+
+//
+// Gamepad thresholds
+//
+XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE ::  7849;
+XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE :: 8689;
+XINPUT_GAMEPAD_TRIGGER_THRESHOLD ::    30;
+
+// User index definitions
+XUSER_MAX_COUNT ::                 4;
+
+XUSER_INDEX_ANY ::                 0x000000FF;
+
+ERROR_DEVICE_NOT_CONNECTED :: 1167; // From winerror.h
+
+XInputGetState := (dwUserIndeX: u32, pState: *XINPUT_STATE) -> u32 #c_call {
+    return ERROR_DEVICE_NOT_CONNECTED;
+}
+XInputSetState := (dwUserIndeX: u32, pVibration: *XINPUT_VIBRATION) -> u32 #c_call {
+    return ERROR_DEVICE_NOT_CONNECTED;
+}
+
+win32_process_keyboard_message :: () {
+}
+
+win32_process_xinput_digital_button :: (xinput_button_state: u32, button_bit: u32, state: *Game_Button_State) {
+    pressed := (xinput_button_state & button_bit) == button_bit;
+    was_pressed := (state.* & .DOWN) && !(state.* & .END);
+
+    if pressed == was_pressed return;
+
+    if pressed {
+        state.* |= Game_Button_State.DOWN | .START;
+    } else {
+        state.* |= .END;
+    }
+}
+
+win32_process_xinput_stick_value :: (value: s16, dead_zone_threshhold: s16) -> float {
+    result: float;
+
+    if value < -dead_zone_threshhold {
+        result = cast(float, value + dead_zone_threshhold) / (32768.0 - dead_zone_threshhold);
+    } else if value > dead_zone_threshhold {
+        result = cast(float, value - dead_zone_threshhold) / (32767.0 - dead_zone_threshhold);
+    }
+
+    return result;
 }
 
 win32_process_pending_messages :: () {
@@ -231,8 +334,8 @@ win32_display_buffer_in_window :: (buffer: *Win32_Offscreen_Buffer, dc: HDC, win
 
     glViewport(0, 0, xx window_width, xx window_height);
 
-    // glClearColor(.2, .3, .3, 1);
-    // glClear(GL_COLOR_BUFFER_BIT);
+    glClearColor(0, 0, 0, 0);
+    glClear(GL_COLOR_BUFFER_BIT);
 
     glBindTexture(GL_TEXTURE_2D, blit_texture_handle);
 
@@ -285,13 +388,10 @@ win32_display_buffer_in_window :: (buffer: *Win32_Offscreen_Buffer, dc: HDC, win
 }
 
 main :: () {
+    win32_init_xinput();
+
     SetProcessDPIAware();
     timeBeginPeriod(1);
-
-    init_gamepad();
-
-    // initted := init_xinput();
-    // assert(initted);
 
     hInstance := GetModuleHandleW(null);
 
@@ -331,20 +431,102 @@ main :: () {
     game_memory.base_pointer = VirtualAlloc(xx base_address, game_memory.base_size,
                                             MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
+    game_input: Game_Input;
+
     ShowWindow(window, SW_SHOWDEFAULT);
-
-    performance_frequency: s64;
-    QueryPerformanceFrequency(*performance_frequency);
-
-    last_counter: s64;
-    QueryPerformanceCounter(*last_counter);
 
     while !should_quit_game {
         win32_process_pending_messages();
 
-        // @Hack: This is needed because we are not using the Input module!
-        memset(*input_button_states, 0, size_of(type_of(input_button_states)));
-        update_gamepad();
+        // TODO: Need to not poll disconnected controllers to avoid
+        // xinput frame rate hit on older libraries...
+        // TODO: Should we poll this more frequently?
+        max_controller_count := XUSER_MAX_COUNT;
+        if max_controller_count > game_input.controllers.count {
+            max_controller_count = game_input.controllers.count;
+        }
+
+        for 0..max_controller_count - 1 {
+            controller := *game_input.controllers[it];
+
+            controller_state: XINPUT_STATE;
+            if XInputGetState(xx it, *controller_state) == 0 /*ERROR_SUCCESS*/ {
+                controller.connected = true;
+
+                // @Speed: Instead of doing this, we could mantain old_state and new_state.
+                mask     := ~Game_Button_State.START;
+                end_mask := ~(Game_Button_State.END | .DOWN | .START);
+                for * controller.buttons {
+                    if it.* & .END {
+                        it.* &= end_mask;
+                    } else {
+                        it.* &= mask;
+                    }
+                }
+
+                pad := *controller_state.Gamepad;
+
+                controller.left_stick.x = win32_process_xinput_stick_value(pad.sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+                controller.left_stick.y = win32_process_xinput_stick_value(pad.sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+                controller.right_stick.x = win32_process_xinput_stick_value(pad.sThumbRX, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+                controller.right_stick.y = win32_process_xinput_stick_value(pad.sThumbRY, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+
+                if controller.left_stick.x != 0 || controller.left_stick.y != 0 {
+                    controller.is_analog = true;
+                }
+
+                if pad.wButtons & XINPUT_GAMEPAD_DPAD_UP {
+                    controller.left_stick.y = 1;
+                    controller.is_analog = false;
+                }
+
+                if pad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN {
+                    controller.left_stick.y = -1;
+                    controller.is_analog = false;
+                }
+
+                if pad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT {
+                    controller.left_stick.x = -1;
+                    controller.is_analog = false;
+                }
+
+                if pad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT {
+                    controller.left_stick.x = 1;
+                    controller.is_analog = false;
+                }
+
+                threshold : float : 0.5;
+                win32_process_xinput_digital_button(xx ifx controller.left_stick.x < -threshold then 1, 1, *controller.move_left);
+                win32_process_xinput_digital_button(xx ifx controller.left_stick.x > threshold then 1, 1, *controller.move_right);
+                win32_process_xinput_digital_button(xx ifx controller.left_stick.y < -threshold then 1, 1, *controller.move_down);
+                win32_process_xinput_digital_button(xx ifx controller.left_stick.y > threshold then 1, 1, *controller.move_up);
+
+                win32_process_xinput_digital_button(pad.wButtons, XINPUT_GAMEPAD_A, *controller.action_down);
+                win32_process_xinput_digital_button(pad.wButtons, XINPUT_GAMEPAD_B, *controller.action_right);
+                win32_process_xinput_digital_button(pad.wButtons, XINPUT_GAMEPAD_X, *controller.action_left);
+                win32_process_xinput_digital_button(pad.wButtons, XINPUT_GAMEPAD_Y, *controller.action_up);
+
+                win32_process_xinput_digital_button(pad.wButtons, XINPUT_GAMEPAD_LEFT_SHOULDER, *controller.left_shoulder);
+                win32_process_xinput_digital_button(pad.wButtons, XINPUT_GAMEPAD_RIGHT_SHOULDER, *controller.right_shoulder);
+                win32_process_xinput_digital_button(pad.wButtons, XINPUT_GAMEPAD_START, *controller.start);
+                win32_process_xinput_digital_button(pad.wButtons, XINPUT_GAMEPAD_BACK, *controller.back);
+            } else {
+                // The controller is not available
+                controller.connected = false;
+            }
+        }
+
+/*
+        for controller: game_input.controllers {
+            if controller.connected {
+                for controller.buttons {
+                    if it & .DOWN {
+                        print("%\n", it_index);
+                    }
+                }
+            }
+        }
+*/
 
         buffer: Offscreen_Buffer = ---;
         buffer.memory = global_backbuffer.memory;
@@ -353,20 +535,12 @@ main :: () {
         buffer.pitch = global_backbuffer.pitch;
         buffer.bytes_per_pixel = global_backbuffer.bytes_per_pixel;
 
-        draw_one_frame(*game_memory, *buffer);
+        draw_one_frame(*game_memory, *game_input, *buffer);
 
         window_width, window_height := win32_get_window_dimension(window);
         dc := GetDC(window);
         win32_display_buffer_in_window(*global_backbuffer, dc, window_width, window_height);
         ReleaseDC(window, dc);
-
-        end_counter: s64;
-        QueryPerformanceCounter(*end_counter);
-
-        counter_elapsed := end_counter - last_counter;
-        last_counter = end_counter;
-
-        // print("ms = %\n", (1000*counter_elapsed) / cast(float) performance_frequency);
     }
 }
 
@@ -377,4 +551,3 @@ global_backbuffer: Win32_Offscreen_Buffer;
 saved_window_position: WINDOWPLACEMENT = .{ length = size_of(WINDOWPLACEMENT) };
 
 blit_texture_handle: u32;
-
