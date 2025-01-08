@@ -388,10 +388,15 @@ win32_display_buffer_in_window :: (buffer: *Win32_Offscreen_Buffer, dc: HDC, win
 }
 
 main :: () {
-    win32_init_xinput();
-
     SetProcessDPIAware();
     timeBeginPeriod(1);
+
+    win32_init_xinput();
+
+    xbox_controller_present: [XUSER_MAX_COUNT] bool;
+    for *present: xbox_controller_present {
+        present.* = true;
+    }
 
     hInstance := GetModuleHandleW(null);
 
@@ -450,7 +455,7 @@ main :: () {
             controller := *game_input.controllers[it];
 
             controller_state: XINPUT_STATE;
-            if XInputGetState(xx it, *controller_state) == 0 /*ERROR_SUCCESS*/ {
+            if xbox_controller_present[it] && XInputGetState(xx it, *controller_state) == 0 /*ERROR_SUCCESS*/ {
                 controller.connected = true;
 
                 // @Speed: Instead of doing this, we could mantain old_state and new_state.
@@ -513,6 +518,7 @@ main :: () {
             } else {
                 // The controller is not available
                 controller.connected = false;
+                xbox_controller_present[it] = false;
             }
         }
 

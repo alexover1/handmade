@@ -8,6 +8,8 @@ Game_Memory :: struct {
 Game_State :: struct {
     blue_offset: s32;
     green_offset: s32;
+    player_x: s32;
+    player_y: s32;
 }
 
 Game_Input :: struct {
@@ -58,6 +60,19 @@ Offscreen_Buffer :: struct {
     bytes_per_pixel: s32;
 }
 
+render_player :: (buffer: *Offscreen_Buffer, player_x: s32, player_y: s32) {
+    color: u32 = 0xFFFFFFFF;
+    top := player_y;
+    bottom := player_y + 10;
+    for x: player_x..player_x + 10 {
+        pixel := buffer.memory + x*buffer.bytes_per_pixel + top*buffer.pitch;
+        for y: top..bottom {
+            cast(*u32, pixel).* = color;
+            pixel += buffer.pitch;
+        }
+    }
+}
+
 render_weird_gradient :: (buffer: *Offscreen_Buffer, blue_offset: s32, green_offset: s32) {
     row := cast(*u8) buffer.memory;
     for y: 0..buffer.height-1 {
@@ -75,8 +90,6 @@ render_weird_gradient :: (buffer: *Offscreen_Buffer, blue_offset: s32, green_off
 draw_one_frame :: (memory: *Game_Memory, input: *Game_Input, buffer: *Offscreen_Buffer) {
     using game_state := cast(*Game_State) memory.base_pointer;
 
-    render_weird_gradient(buffer, blue_offset, green_offset);
-
     for controller: input.controllers {
         if controller.connected {
             if controller.move_left & .DOWN {
@@ -91,7 +104,13 @@ draw_one_frame :: (memory: *Game_Memory, input: *Game_Input, buffer: *Offscreen_
             if controller.move_up & .DOWN {
                 green_offset += 1;
             }
+
+            player_x += cast(s32, 4.0 * controller.left_stick.x);
+            player_y += cast(s32, 4.0 * controller.left_stick.y);
         }
     }
+
+    render_weird_gradient(buffer, blue_offset, green_offset);
+    render_player(buffer, player_x, player_y);
 }
 
